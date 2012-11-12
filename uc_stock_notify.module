@@ -1,0 +1,134 @@
+<?php
+// $Id$
+
+/**
+ * @file
+ * Replace "add to cart" button with "notify when back in stock" button if stock
+ * is at 0 for a product (or below the stock threshold if uc_multi_stock is installed
+ * and the threshold option is enabled). Notification is sent to those requesting it
+ * as soon as the product is returned to stock. For anonymous users there is an
+ * additional screen prompting for an e-mail address to send notification to.
+ */
+
+require_once('uc_stock_notify.ca.inc');
+
+/**
+ * Implementation of hook_perm().
+ */
+function uc_stock_notify_perm() {
+  return array('subscribe to stock notices');
+}
+
+/**
+ * Implementation of hook_menu().
+ */
+function uc_stock_notify_menu() {
+  $items['stock_notify/%'] = array(
+    'title' => 'Stock notification',
+    'description' => 'Add stock notification for anonymous users.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('uc_stock_notify_anonymous_form', 1),
+    //'access callback' => 'user_is_anonymous',
+    'access arguments' => array('subscribe to stock notices'),
+    'type' => MENU_CALLBACK,
+  );
+  return $items;
+}
+
+
+
+/**
+ * Implementation of hook_form_alter().
+ *
+ * uc_stock_edit_form_submit() updates the database directly, so we can't use the hook.
+ */
+function uc_stock_notify_form_uc_stock_edit_form_alter(&$form, $form_state) {
+  array_unshift($form['#submit'], 'uc_stock_notify_edit_submit');
+}
+
+/**
+ * Pull the "restocked" CA trigger when stock levels are reset.
+ */
+function uc_stock_notify_edit_submit($form, &$form_state) {
+  foreach (element_children($form_state['values']['stock']) as $id) {
+    $result = db_fetch_array(db_query("SELECT stock, threshold FROM {uc_product_stock} WHERE sku = '%s'", $form_state['values']['stock'][$id]['sku']));
+    $threshold = 0;
+    if (module_exists('uc_multi_stock') && variable_get('uc_multi_stock_use_thershold', FALSE)) {
+      $threshold = $result['threshold'];
+    }
+
+    if ($result['stock'] <= $threshold && $form_state['values']['stock'][$id]['stock'] > $threshold) {
+      ca_pull_trigger('uc_stock_notify_restocked', $form_state['values']['stock'][$id]['sku']);
+    }
+  }
+}
+
+/**
+ * Implementation of hook_uc_stock_adjusted().
+ */
+function uc_stock_notify_uc_stock_adjusted($sku, $stock, $qty) {
+  if ($qty > 0) {
+    ca_pull_trigger('uc_stock_notify_restocked', (string)$sku);
+  }
+}
+
+/**
+ * Add a stock notification for the current user, or redirect to an email address form if the user is anonymous.
+ */
+function uc_stock_notify_form_submit($form, &$form_state) {
+  global $user;
+  if (user_is_logged_in()) {
+    $snid = db_result(db_query("SELECT snid FROM {uc_stock_notify} WHERE sku = '%s' AND uid = %d", $form['model']['#value'], $user->uid));
+    if (empty($snid)) {
+      db_query("INSERT INTO {uc_stock_notify} SET sku = '%s', uid = %d, created = %d", $form['model']['#value'], $user->uid, time());
+    }
+    drupal_set_message(t('You will be notified when the product comes back into stock.'));
+  }
+  else {
+    $form_state['redirect'] = array('stock_notify/'. $form['model']['#value'], drupal_get_destination());
+  }
+}
+
+/**
+ * Stock notification form for anonymous users.
+ */
+function uc_stock_notify_anonymous_form($form_state, $model) {
+  $product_nid = db_result(db_query("SELECT nid FROM {uc_product_stock} WHERE sku = '%s'",$model));
+  // fivefivefour HACK, adding node preview to the form
+  $node = node_load($product_nid);
+  $form['product_preview'] = array(
+    '#type' => 'markup',
+    '#value' => node_view($node,TRUE)
+  );
+  $form['product'] = array(
+    '#value' => t('Enter your email address to be notified when @product comes back into stock.', array('@product' => $node->title)),
+  );
+  $form['model'] = array('#type' => 'value', '#value' => $model);
+  $form['mail'] = array(
+    '#type' => 'textfield',
+    '#title' => t('E-mail address'),
+    '#maxlength' => EMAIL_MAX_LENGTH,
+    '#required' => TRUE,
+  );
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Submit'),
+  );
+  return $form;
+}
+
+function uc_stock_notify_anonymous_form_validate($elements, &$form_state, $form_id = NULL) {
+  if ($error = user_validate_mail($form_state['values']['mail'])) {
+    form_set_error('mail', $error);
+  }
+}
+
+function uc_stock_notify_anonymous_form_submit($form, &$form_state) {
+  $product_nid = db_result(db_query("SELECT nid FROM {uc_product_stock} WHERE sku = '%s'",$form_state['values']['model']));
+  $snid = db_result(db_query("SELECT snid FROM {uc_stock_notify} WHERE sku = '%s' AND mail = '%s'", ($form_state['values']['model']), ($form_state['values']['mail'])));
+  if (empty($snid)) {
+    db_query("INSERT INTO {uc_stock_notify} SET sku = '%s', mail = '%s', created = %d", ($form_state['values']['model']), ($form_state['values']['mail']), time());
+  }
+  drupal_set_message(t('You will be notified when this product comes back into stock.'));
+  drupal_goto('node/' . $product_nid);
+}

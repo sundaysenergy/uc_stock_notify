@@ -1,0 +1,65 @@
+<?php
+// $Id$
+
+/**
+ * @file
+ * Install file for uc_stock_notify.
+ */
+
+/**
+ * Implementation of hook_schema().
+ */
+function uc_stock_notify_schema() {
+  $schema = array();
+
+  $schema['uc_stock_notify'] = array(
+    'fields' => array(
+      'snid' => array(
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'sku' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'uid' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'mail' => array(
+        'type' => 'varchar',
+        'length' => 64,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'created' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+    ),
+    'primary key' => array('snid'),
+  );
+
+  return $schema;
+}
+
+/**
+ * Implementation of hook_install().
+ */
+function uc_stock_notify_install() {
+  drupal_install_schema('uc_stock_notify');
+}
+
+/**
+ * Implementation of hook_uninstall().
+ */
+function uc_stock_notify_uninstall() {
+  drupal_uninstall_schema('uc_stock_notify');
+}

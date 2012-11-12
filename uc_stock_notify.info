@@ -1,0 +1,13 @@
+; $Id: uc_stock_notify.info,v 1.1.4.2 2009/12/09 05:48:36 cyu Exp $
+name = Stock Notify
+description = Notify customers when products come back into stock
+dependencies[] = uc_stock
+package = "Ubercart - extra"
+core = 6.x
+
+; Information added by drupal.org packaging script on 2010-09-21
+version = "6.x-1.x-dev"
+core = "6.x"
+project = "uc_stock_notify"
+datestamp = "1285028677"
+
